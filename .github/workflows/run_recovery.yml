@@ -1,0 +1,62 @@
+name: Bitcoin Brain Wallet Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      mask_file:
+        description: 'Nome do arquivo de máscaras (ex: rockyou-1-60.hcmask)'
+        required: true
+        default: 'rockyou-1-60.hcmask'
+      addresses_file:
+        description: 'Nome do arquivo de endereços (ex: addresses_with_balance.txt)'
+        required: true
+        default: 'addresses_with_balance.txt'
+      output_file:
+        description: 'Nome do arquivo de saída para chaves recuperadas'
+        required: true
+        default: 'recovered_keys.txt'
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          
+      - name: Install dependencies
+        run: pip install coincurve
+        
+      - name: Run Recovery Script
+        id: recovery_run
+        run: |
+          # Executa o script com os argumentos fornecidos pelo usuário
+          python3 bitcoin_recovery_final.py ${{ github.event.inputs.mask_file }} ${{ github.event.inputs.addresses_file }} ${{ github.event.inputs.output_file }}
+          
+          # Verifica se o arquivo de chaves recuperadas foi criado e não está vazio
+          if [ -s ${{ github.event.inputs.output_file }} ]; then
+            echo "::set-output name=keys_found::true"
+            echo "Chaves encontradas! Conteúdo do arquivo:"
+            cat ${{ github.event.inputs.output_file }}
+          else
+            echo "::set-output name=keys_found::false"
+            echo "Nenhuma chave encontrada nesta execução."
+          fi
+        
+      - name: Upload Recovered Keys (if found)
+        if: steps.recovery_run.outputs.keys_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovered-keys
+          path: ${{ github.event.inputs.output_file }}
+          retention-days: 7
+          
+      - name: Notify on Failure
+        if: failure()
+        run: echo "::error::O workflow de recuperação falhou. Verifique os logs."
+
